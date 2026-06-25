@@ -1,0 +1,3 @@
+-- PostgreSQL 初始化脚本
+-- 注意：数据库已由 POSTGRES_DB 环境变量自动创建，无需手动 CREATE DATABASE
+-- 表结构由 GORM AutoMigrate 自动管理，此处仅作备用参考

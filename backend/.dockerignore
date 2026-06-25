@@ -1,0 +1,15 @@
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+.idea/
+.vscode/
+.git/
+.gitignore
+*.md
+config.yaml
+server

@@ -1,0 +1,28 @@
+# Backend
+backend/sever
+backend/server.exe
+backend/*.exe
+backend/tmp/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log
+
+# Environment
+.env
+.env.local
