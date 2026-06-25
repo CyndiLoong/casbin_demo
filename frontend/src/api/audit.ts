@@ -21,6 +21,7 @@ export interface AuditApplication {
   reviewed_at?: string
   created_at: string
   can_withdraw: boolean
+  withdraw_remain_ms: number
   withdraw_reason?: string
   withdrawn_at?: string
 }
@@ -87,6 +88,14 @@ export function getAuditDetail(id: number): Promise<ApiResponse<AuditApplication
 
 export function reviewAudit(id: number, data: ReviewAuditRequest): Promise<ApiResponse<null>> {
   return request.post(`/audit/applications/${id}/review`, data)
+}
+
+export interface WithdrawAuditRequest {
+  reason?: string
+}
+
+export function withdrawAudit(id: number, data?: WithdrawAuditRequest): Promise<ApiResponse<null>> {
+  return request.post(`/audit/applications/${id}/withdraw`, data || {})
 }
 
 export function getPendingCount(): Promise<ApiResponse<{ count: number }>> {
