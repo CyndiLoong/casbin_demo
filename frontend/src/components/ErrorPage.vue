@@ -55,12 +55,14 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { Lock, Warning, QuestionFilled, CircleClose, House, Back, ArrowRight } from '@element-plus/icons-vue'
+import { useUserStore } from '@/store/user'
 
 const props = defineProps<{
   code: 401 | 403 | 404 | 500
 }>()
 
 const router = useRouter()
+const userStore = useUserStore()
 
 interface ErrorConfig {
   title: string
@@ -109,10 +111,16 @@ const errorConfigs: Record<number, ErrorConfig> = {
 const errorConfig = computed(() => errorConfigs[props.code])
 
 const goHome = () => {
-  router.push('/')
+  const token = localStorage.getItem('token')
+  if (!token) {
+    router.push('/login')
+    return
+  }
+  router.push('/dashboard')
 }
 
 const goLogin = () => {
+  userStore.logout()
   router.push('/login')
 }
 
@@ -120,7 +128,7 @@ const goBack = () => {
   if (window.history.length > 1) {
     router.back()
   } else {
-    router.push('/')
+    goHome()
   }
 }
 </script>

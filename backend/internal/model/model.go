@@ -387,3 +387,58 @@ type MQNotificationMessage struct {
 	CreatedAt      time.Time `json:"created_at"`
 	IdempotencyKey string    `json:"idempotency_key,omitempty"`
 }
+
+// ResourceStatus 资源状态常量
+const (
+	ResourceStatusActive   = 1 // 正常可用
+	ResourceStatusInactive = 0 // 暂不可用
+)
+
+// Resource 大模型API资源表实体，对应 api_resources 表。
+//
+// 资源清单用于展示所有可申请的大模型API资源，用户可查看详情并提交申请。
+//
+// 字段说明：
+//   - Name: 资源名称
+//   - Type: 资源类型（llm_chat/llm_code/image_gen/asr/tts/embedding/other）
+//   - APIName: API接口名称
+//   - Description: 资源详细描述
+//   - Provider: 提供厂商
+//   - Version: 版本号
+//   - DefaultQPS: 默认QPS配额
+//   - MaxQPS: 最大可申请QPS
+//   - Status: 状态 1=可用 0=不可用
+//   - DocsURL: 文档链接
+//   - Tags: 标签（JSON数组，用于分类筛选）
+type Resource struct {
+	ID          uint           `gorm:"primaryKey" json:"id"`
+	UUID        string         `gorm:"uniqueIndex;size:36;not null" json:"uuid"`
+	Name        string         `gorm:"size:200;not null" json:"name"`
+	Type        string         `gorm:"index;size:50;not null" json:"type"`
+	APIName     string         `gorm:"size:200;not null" json:"api_name"`
+	Description string         `gorm:"type:text" json:"description"`
+	Provider    string         `gorm:"size:100" json:"provider"`
+	Version     string         `gorm:"size:50" json:"version"`
+	DefaultQPS  int            `gorm:"default:10" json:"default_qps"`
+	MaxQPS      int            `gorm:"default:100" json:"max_qps"`
+	Status      int            `gorm:"default:1;index" json:"status"`
+	DocsURL     string         `gorm:"size:500" json:"docs_url"`
+	Tags        string         `gorm:"type:text" json:"tags"` // JSON数组字符串
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
+// TableName 指定 GORM 使用的表名。
+func (Resource) TableName() string {
+	return "api_resources"
+}
+
+// ResourceListRequest 资源列表查询请求 DTO。
+type ResourceListRequest struct {
+	Page     int    `form:"page" binding:"min=1"`
+	PageSize int    `form:"page_size" binding:"min=1,max=100"`
+	Type     string `form:"type"`
+	Status   *int   `form:"status"`
+	Keyword  string `form:"keyword"`
+}

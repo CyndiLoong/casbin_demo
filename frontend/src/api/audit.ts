@@ -114,10 +114,10 @@ export function getMyApplications(params?: PaginationParams & { status?: number 
 
 /**
  * 获取全部申请列表（管理员）
- * @param params 分页参数 + 状态筛选 + 关键词
+ * @param params 分页参数 + 状态筛选 + 关键词 + 是否排除待审核
  * @returns 分页申请列表
  */
-export function getAllApplications(params?: PaginationParams & { status?: number; applicant?: string }): Promise<ApiResponse<ListResponse<AuditApplication>>> {
+export function getAllApplications(params?: PaginationParams & { status?: number; applicant?: string; exclude_pending?: boolean }): Promise<ApiResponse<ListResponse<AuditApplication>>> {
   return request.get('/audit/applications', { params })
 }
 

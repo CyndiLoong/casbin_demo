@@ -1,6 +1,6 @@
-// WebSocket 服务：管理实时连接、自动重连、消息分发
+// WebSocket 服务：管理实时连接、自动重连、消息分发、弹窗去重
 import { ElNotification } from 'element-plus'
-import { useUserStore } from '@/store/user'
+import router from '@/router'
 
 type MessageHandler = (data: any) => void
 
@@ -11,6 +11,21 @@ interface WSMessage {
   room?: string
   data: any
   timestamp: string
+}
+
+interface NotificationData {
+  type: string
+  title: string
+  content: string
+  business_type: string
+  business_id: number
+  id?: string
+  data?: {
+    application_id?: number
+    approved?: boolean
+    applicant?: string
+    resource?: string
+  }
 }
 
 class WebSocketService {
@@ -25,6 +40,9 @@ class WebSocketService {
   private intentionalClose: boolean = false
   private onUnreadCountChange?: (count: number) => void
   private onPendingCountChange?: (count: number) => void
+  // 消息去重：记录最近5分钟内已弹窗的消息ID，防止MQ重投递导致重复弹窗
+  private shownMessages: Map<string, number> = new Map()
+  private readonly dedupWindowMs = 5 * 60 * 1000
 
   connect(token: string) {
     this.intentionalClose = false
@@ -41,7 +59,7 @@ class WebSocketService {
     try {
       this.ws = new WebSocket(this.url)
     } catch (e) {
-      console.error('WebSocket creation failed', e)
+      console.error('[WS] WebSocket creation failed', e)
       this.scheduleReconnect()
       return
     }
@@ -51,11 +69,11 @@ class WebSocketService {
       this.connected = true
       this.reconnectAttempts = 0
       this.startHeartbeat()
-      // 连接成功后拉取一次未读/待审数量
       this.fetchCounts()
     }
 
     this.ws.onmessage = (event) => {
+      if (event.data === 'pong') return
       try {
         const msg: WSMessage = JSON.parse(event.data)
         this.handleMessage(msg)
@@ -78,42 +96,98 @@ class WebSocketService {
     }
   }
 
-  private handleMessage(msg: WSMessage) {
-    const data = msg.data
+  private isDuplicate(msgId: string): boolean {
+    if (!msgId) return false
+    this.cleanupExpiredDedups()
+    if (this.shownMessages.has(msgId)) {
+      console.log('[WS] Duplicate message suppressed:', msgId)
+      return true
+    }
+    this.shownMessages.set(msgId, Date.now())
+    return false
+  }
 
-    if (data.type === 'new_application') {
-      ElNotification({
-        title: data.title || '新的审核申请',
-        message: data.content,
-        type: 'info',
-        duration: 8000,
-        onClick: () => {
-          window.location.hash = '#/audit'
-        }
-      })
-      this.fetchCounts()
-    } else if (data.type === 'review_result') {
-      ElNotification({
-        title: data.title || '审核结果通知',
-        message: data.content,
-        type: data.data?.approved ? 'success' : 'warning',
-        duration: 8000,
-        onClick: () => {
-          window.location.hash = '#/my-applications'
-        }
-      })
-      this.fetchCounts()
-    } else if (data.type === 'unread_count') {
-      if (this.onUnreadCountChange) {
-        this.onUnreadCountChange(data.count)
+  private cleanupExpiredDedups() {
+    const now = Date.now()
+    for (const [id, ts] of this.shownMessages) {
+      if (now - ts > this.dedupWindowMs) {
+        this.shownMessages.delete(id)
       }
     }
+  }
 
-    // 调用注册的自定义处理器
-    const handlers = this.handlers.get(data.type) || []
+  private handleMessage(msg: WSMessage) {
+    // 心跳响应
+    if (msg.type === 'pong') return
+
+    // 统一处理通知消息（包括直接WS推送和MQ跨实例转发的消息）
+    if (msg.type === 'notification') {
+      const notif = msg.data as NotificationData
+      if (!notif || !notif.type) return
+
+      // 幂等去重：同一ID的消息5分钟内不重复弹窗
+      if (this.isDuplicate(notif.id || `${notif.type}-${notif.business_id}`)) return
+
+      if (notif.type === 'new_application') {
+        ElNotification({
+          title: notif.title || '新的审核申请',
+          message: notif.content,
+          type: 'info',
+          duration: 8000,
+          position: 'top-right',
+          onClick: () => {
+            router.push('/audit')
+          }
+        })
+        this.fetchCounts()
+      } else if (notif.type === 'review_result') {
+        ElNotification({
+          title: notif.title || '审核结果通知',
+          message: notif.content,
+          type: notif.data?.approved ? 'success' : 'warning',
+          duration: 8000,
+          position: 'top-right',
+          onClick: () => {
+            router.push('/my-applications')
+          }
+        })
+        this.fetchCounts()
+      } else if (notif.type === 'application_withdrawn') {
+        ElNotification({
+          title: notif.title || '申请已撤回',
+          message: notif.content,
+          type: 'warning',
+          duration: 6000,
+          position: 'top-right'
+        })
+        this.fetchCounts()
+      }
+
+      // 调用注册的自定义处理器
+      const handlers = this.handlers.get(notif.type) || []
+      const wildcardHandlers = this.handlers.get('*') || []
+      ;[...handlers, ...wildcardHandlers].forEach(fn => {
+        try { fn(notif) } catch (e) { console.error('[WS] handler error', e) }
+      })
+      return
+    }
+
+    // 未读数更新
+    if (msg.type === 'unread_count') {
+      if (this.onUnreadCountChange) {
+        this.onUnreadCountChange(msg.data?.count ?? 0)
+      }
+      if (this.onPendingCountChange && msg.data?.pending_count !== undefined) {
+        this.onPendingCountChange(msg.data.pending_count)
+      }
+      return
+    }
+
+    // 其他类型消息调用自定义处理器
+    const handlers = this.handlers.get(msg.type) || []
     const wildcardHandlers = this.handlers.get('*') || []
     ;[...handlers, ...wildcardHandlers].forEach(fn => {
-      try { fn(data) } catch (e) { console.error('[WS] handler error', e) }
+      try { fn(msg.data) } catch (e) { console.error('[WS] handler error', e) }
     })
   }
 
@@ -207,7 +281,7 @@ class WebSocketService {
         this.onUnreadCountChange(res.data.unread_count)
       }
       if (res.data && this.onPendingCountChange) {
-        this.onPendingCountChange(res.data.pending_count)
+        this.onPendingCountChange(res.data.pending_count ?? 0)
       }
     } catch (e) {
       // ignore

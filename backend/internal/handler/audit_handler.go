@@ -201,8 +201,9 @@ func (h *AuditHandler) ListAllApplications(c *gin.Context) {
 			status = &sv
 		}
 	}
+	excludePending := c.Query("exclude_pending") == "true"
 	applicant := c.Query("applicant")
-	list, total, err := h.auditService.ListAllApplications(page, pageSize, status, applicant)
+	list, total, err := h.auditService.ListAllApplications(page, pageSize, status, excludePending, applicant)
 	if err != nil {
 		response.Fail(c, 500, err.Error())
 		return

@@ -60,6 +60,9 @@ func InitDB(cfg *config.Config) (*gorm.DB, error) {
 		&model.User{},
 		&model.Role{},
 		&model.Permission{},
+		&model.Resource{},
+		&model.AuditApplication{},
+		&model.SysMessage{},
 	); err != nil {
 		return nil, fmt.Errorf("auto migrate: %w", err)
 	}
@@ -117,11 +120,22 @@ func SeedData(db *gorm.DB) error {
 		{Name: "user:create", Label: "创建用户", Path: "/api/users", Method: "POST", Description: "创建用户"},
 		{Name: "user:update", Label: "更新用户", Path: "/api/users/:id", Method: "PUT", Description: "更新用户"},
 		{Name: "user:delete", Label: "删除用户", Path: "/api/users/:id", Method: "DELETE", Description: "删除用户"},
+		{Name: "user:assign-role", Label: "分配角色", Path: "/api/users/assign-role", Method: "POST", Description: "为用户分配角色"},
 		{Name: "role:list", Label: "角色列表", Path: "/api/roles", Method: "GET", Description: "查看角色列表"},
 		{Name: "role:create", Label: "创建角色", Path: "/api/roles", Method: "POST", Description: "创建角色"},
 		{Name: "role:update", Label: "更新角色", Path: "/api/roles/:id", Method: "PUT", Description: "更新角色"},
 		{Name: "role:delete", Label: "删除角色", Path: "/api/roles/:id", Method: "DELETE", Description: "删除角色"},
+		{Name: "role:assign-permission", Label: "分配权限", Path: "/api/roles/assign-permission", Method: "POST", Description: "为角色分配权限"},
 		{Name: "permission:list", Label: "权限列表", Path: "/api/permissions", Method: "GET", Description: "查看权限列表"},
+		{Name: "permission:create", Label: "创建权限", Path: "/api/permissions", Method: "POST", Description: "创建权限"},
+		{Name: "permission:update", Label: "更新权限", Path: "/api/permissions/:id", Method: "PUT", Description: "更新权限"},
+		{Name: "permission:delete", Label: "删除权限", Path: "/api/permissions/:id", Method: "DELETE", Description: "删除权限"},
+		{Name: "audit:list-all", Label: "审核列表(全部)", Path: "/api/audit/applications", Method: "GET", Description: "查看所有审核申请"},
+		{Name: "audit:review", Label: "审核操作", Path: "/api/audit/applications/:id/review", Method: "POST", Description: "审核申请"},
+		{Name: "audit:pending-count", Label: "待审核数量", Path: "/api/audit/pending-count", Method: "GET", Description: "获取待审核数量"},
+		{Name: "resource:create", Label: "创建资源", Path: "/api/resources", Method: "POST", Description: "创建资源"},
+		{Name: "resource:update", Label: "更新资源", Path: "/api/resources/:id", Method: "PUT", Description: "更新资源"},
+		{Name: "resource:delete", Label: "删除资源", Path: "/api/resources/:id", Method: "DELETE", Description: "删除资源"},
 	}
 
 	for _, p := range permissions {
@@ -139,6 +153,14 @@ func SeedData(db *gorm.DB) error {
 		slog.Warn("assign permissions to admin failed", "error", err)
 	} else {
 		slog.Info("seed: assigned all permissions to admin role", "count", len(allPerms))
+	}
+
+	var userPerms []model.Permission
+	db.Where("name IN ?", []string{"dashboard"}).Find(&userPerms)
+	if err := db.Model(&userRole).Association("Permissions").Replace(userPerms); err != nil {
+		slog.Warn("assign permissions to user failed", "error", err)
+	} else {
+		slog.Info("seed: assigned basic permissions to user role", "count", len(userPerms))
 	}
 
 	var adminUser model.User
@@ -185,6 +207,135 @@ func SeedData(db *gorm.DB) error {
 		slog.Info("seed: created test user (password: user123)")
 	}
 
+	// 初始化资源清单种子数据（幂等）
+	seedResources(db)
+
 	slog.Info("seed data initialized successfully")
 	return nil
+}
+
+// seedResources 初始化资源清单种子数据（幂等操作）。
+//
+// 初始化内容：
+//  - 预置常见的大模型API资源，包括对话大模型、代码大模型、图像生成、语音识别等
+//  - 每个资源包含名称、类型、API名称、描述、厂商、版本、QPS配额等信息
+//  - 使用 API名称 作为唯一标识，重复执行不会报错
+func seedResources(db *gorm.DB) {
+	resources := []model.Resource{
+		{
+			Name:         "GPT-4 对话大模型",
+			Type:         "llm_chat",
+			APIName:      "gpt-4-chat",
+			Description:  "基于GPT-4的通用对话大模型，支持多轮对话、文本生成、逻辑推理等复杂任务",
+			Provider:     "OpenAI",
+			Version:      "gpt-4-0613",
+			DefaultQPS:   10,
+			MaxQPS:       100,
+			Status:       model.ResourceStatusActive,
+			DocsURL:      "https://platform.openai.com/docs/api-reference/chat",
+			Tags:         `["大模型","对话","推理"]`,
+		},
+		{
+			Name:         "GPT-3.5 对话大模型",
+			Type:         "llm_chat",
+			APIName:      "gpt-3.5-turbo",
+			Description:  "基于GPT-3.5 Turbo的快速对话大模型，性价比高，适合日常对话场景",
+			Provider:     "OpenAI",
+			Version:      "gpt-3.5-turbo-0613",
+			DefaultQPS:   20,
+			MaxQPS:       200,
+			Status:       model.ResourceStatusActive,
+			DocsURL:      "https://platform.openai.com/docs/api-reference/chat",
+			Tags:         `["大模型","对话","高性价比"]`,
+		},
+		{
+			Name:         "GPT-4 代码大模型",
+			Type:         "llm_code",
+			APIName:      "gpt-4-code",
+			Description:  "专门优化的代码生成和理解模型，支持代码补全、代码解释、Bug修复等",
+			Provider:     "OpenAI",
+			Version:      "gpt-4-0613",
+			DefaultQPS:   5,
+			MaxQPS:       50,
+			Status:       model.ResourceStatusActive,
+			DocsURL:      "https://platform.openai.com/docs/api-reference/chat",
+			Tags:         `["大模型","代码生成","编程助手"]`,
+		},
+		{
+			Name:         "DALL-E 3 图像生成",
+			Type:         "image_gen",
+			APIName:      "dall-e-3",
+			Description:  "基于DALL-E 3的AI图像生成模型，支持文本描述生成高质量图像",
+			Provider:     "OpenAI",
+			Version:      "dall-e-3",
+			DefaultQPS:   2,
+			MaxQPS:       20,
+			Status:       model.ResourceStatusActive,
+			DocsURL:      "https://platform.openai.com/docs/api-reference/images",
+			Tags:         `["图像生成","AIGC","创意设计"]`,
+		},
+		{
+			Name:         "Whisper 语音识别",
+			Type:         "asr",
+			APIName:      "whisper",
+			Description:  "基于Whisper的语音转文字服务，支持多种语言和方言，准确率高",
+			Provider:     "OpenAI",
+			Version:      "whisper-1",
+			DefaultQPS:   10,
+			MaxQPS:       100,
+			Status:       model.ResourceStatusActive,
+			DocsURL:      "https://platform.openai.com/docs/api-reference/audio",
+			Tags:         `["语音识别","ASR","多语言"]`,
+		},
+		{
+			Name:         "TTS 语音合成",
+			Type:         "tts",
+			APIName:      "tts-1",
+			Description:  "高质量文本转语音服务，支持多种音色和语速调节",
+			Provider:     "OpenAI",
+			Version:      "tts-1",
+			DefaultQPS:   10,
+			MaxQPS:       100,
+			Status:       model.ResourceStatusActive,
+			DocsURL:      "https://platform.openai.com/docs/api-reference/audio",
+			Tags:         `["语音合成","TTS","多音色"]`,
+		},
+		{
+			Name:         "text-embedding 向量嵌入",
+			Type:         "embedding",
+			APIName:      "text-embedding-ada-002",
+			Description:  "文本向量化服务，用于语义搜索、相似度计算、聚类分析等场景",
+			Provider:     "OpenAI",
+			Version:      "text-embedding-ada-002",
+			DefaultQPS:   50,
+			MaxQPS:       500,
+			Status:       model.ResourceStatusActive,
+			DocsURL:      "https://platform.openai.com/docs/api-reference/embeddings",
+			Tags:         `["向量嵌入","Embedding","语义搜索"]`,
+		},
+		{
+			Name:         "通义千问 对话大模型",
+			Type:         "llm_chat",
+			APIName:      "qwen-turbo",
+			Description:  "阿里云通义千问大模型，支持中文理解和生成，响应速度快",
+			Provider:     "阿里云",
+			Version:      "qwen-turbo",
+			DefaultQPS:   15,
+			MaxQPS:       150,
+			Status:       model.ResourceStatusActive,
+			DocsURL:      "https://help.aliyun.com/document_detail/2400395.html",
+			Tags:         `["大模型","对话","中文优化"]`,
+		},
+	}
+
+	for _, r := range resources {
+		var existing model.Resource
+		if err := db.Where("api_name = ?", r.APIName).First(&existing).Error; err != nil {
+			if err := db.Create(&r).Error; err != nil {
+				slog.Warn("create resource failed", "api_name", r.APIName, "error", err)
+			} else {
+				slog.Info("seed: created resource", "name", r.Name)
+			}
+		}
+	}
 }

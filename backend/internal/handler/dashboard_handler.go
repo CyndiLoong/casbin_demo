@@ -2,6 +2,9 @@
 package handler
 
 import (
+	"log/slog"
+	"slices"
+
 	"github.com/gin-gonic/gin"
 
 	"casbin-demo/internal/service"
@@ -18,42 +21,50 @@ func NewDashboardHandler(dashboardService *service.DashboardService) *DashboardH
 	return &DashboardHandler{dashboardService: dashboardService}
 }
 
-// GetStats 获取仪表盘统计信息接口（需 JWT + Casbin 权限）。
+// GetStats 获取仪表盘统计信息接口（需 JWT 认证，管理员返回系统统计，普通用户返回基础信息）。
 // GET /api/dashboard
 //
-// 返回欢迎信息、当前用户角色、系统统计和技术栈信息。
-// 统计数据通过 DashboardService 获取，内置 Redis 缓存（TTL=2min+抖动）。
+// 权限说明：
+//   - 所有登录用户均可访问此接口（无需 Casbin 权限校验）
+//   - 管理员（admin 角色）返回系统级统计数据（用户数、角色数、权限数）
+//   - 普通用户仅返回欢迎信息和基础系统信息，不返回敏感统计数据
+//
+// 缓存策略：管理员统计数据通过 DashboardService 获取，内置 Redis 缓存（TTL=2min+抖动）。
 func (h *DashboardHandler) GetStats(c *gin.Context) {
 	username, _ := c.Get("username")
-	roles, _ := c.Get("roles")
+	rolesVal, _ := c.Get("roles")
 
-	stats, err := h.dashboardService.GetStats()
-	if err != nil {
-		response.ServerError(c, "获取统计数据失败")
-		return
+	var isAdmin bool
+	if roles, ok := rolesVal.([]string); ok {
+		isAdmin = slices.Contains(roles, "admin")
 	}
 
-	var totalUsers, totalRoles, totalPerms int64
-	if stats != nil {
-		totalUsers = stats.TotalUsers
-		totalRoles = stats.TotalRoles
-		totalPerms = stats.TotalPermissions
-	}
-
-	response.Success(c, gin.H{
+	resp := gin.H{
 		"welcome":  "欢迎回来",
 		"username": username,
-		"roles":    roles,
-		"stats": gin.H{
-			"total_users":       totalUsers,
-			"total_roles":       totalRoles,
-			"total_permissions": totalPerms,
-		},
-		"system_info": gin.H{
-			"framework":  "Gin + Gorm + Casbin",
-			"database":   "PostgreSQL",
-			"cache":      "Redis",
-			"go_version": "1.26.4",
-		},
-	})
+		"roles":    rolesVal,
+		"is_admin": isAdmin,
+	}
+
+	if isAdmin {
+		stats, err := h.dashboardService.GetStats()
+		if err != nil {
+			slog.Error("get dashboard stats failed", "error", err, "user", username)
+		} else if stats != nil {
+			resp["stats"] = gin.H{
+				"total_users":       stats.TotalUsers,
+				"total_roles":       stats.TotalRoles,
+				"total_permissions": stats.TotalPermissions,
+			}
+		}
+	}
+
+	resp["system_info"] = gin.H{
+		"framework":  "Gin + Gorm + Casbin",
+		"database":   "PostgreSQL",
+		"cache":      "Redis",
+		"go_version": "1.26.4",
+	}
+
+	response.Success(c, resp)
 }

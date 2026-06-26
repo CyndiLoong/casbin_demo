@@ -40,13 +40,13 @@ const routes: RouteRecordRaw[] = [
         path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/Dashboard.vue'),
-        meta: { title: '仪表盘', icon: 'DataBoard' }
+        meta: { title: '仪表盘' }
       },
       {
         path: 'apply',
         name: 'ApplyResource',
         component: () => import('@/views/ApplyResource.vue'),
-        meta: { title: '资源申请' }
+        meta: { title: '申请资源' }
       },
       {
         path: 'my-applications',
@@ -55,28 +55,40 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '我的申请' }
       },
       {
+        path: 'resources',
+        name: 'ResourceList',
+        component: () => import('@/views/ResourceList.vue'),
+        meta: { title: '资源清单' }
+      },
+      {
+        path: 'messages',
+        name: 'Messages',
+        component: () => import('@/views/Messages.vue'),
+        meta: { title: '消息通知' }
+      },
+      {
         path: 'audit',
         name: 'AuditList',
         component: () => import('@/views/AuditList.vue'),
-        meta: { title: '审核管理', adminOnly: true }
+        meta: { title: '资源审核', adminOnly: true }
       },
       {
         path: 'users',
         name: 'Users',
         component: () => import('@/views/Users.vue'),
-        meta: { title: '用户管理', icon: 'User', adminOnly: true }
+        meta: { title: '用户管理', adminOnly: true }
       },
       {
         path: 'roles',
         name: 'Roles',
         component: () => import('@/views/Roles.vue'),
-        meta: { title: '角色管理', icon: 'UserFilled', adminOnly: true }
+        meta: { title: '角色管理', adminOnly: true }
       },
       {
         path: 'permissions',
         name: 'Permissions',
         component: () => import('@/views/Permissions.vue'),
-        meta: { title: '权限管理', icon: 'Key', adminOnly: true }
+        meta: { title: '权限管理', adminOnly: true }
       }
     ]
   },
@@ -93,10 +105,15 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   NProgress.start()
   const token = localStorage.getItem('token')
   const userStore = useUserStore()
+
+  if (to.path === '/401' || to.path === '/403' || to.path === '/404' || to.path === '/500') {
+    next()
+    return
+  }
 
   if (to.meta.requiresAuth !== false && !token) {
     if (to.path === '/login') {
@@ -104,27 +121,37 @@ router.beforeEach((to, from, next) => {
     } else {
       next('/login')
     }
-  } else if (to.path === '/login' && token) {
-    next('/')
-  } else if (to.meta.adminOnly && token) {
-    if (!userStore.userInfo) {
-      userStore.fetchUserInfo().then((info) => {
-        if (info && info.roles.includes('admin')) {
-          next()
-        } else {
-          next('/403')
-        }
-      }).catch(() => {
-        next('/login')
-      })
-    } else if (userStore.userInfo.roles.includes('admin')) {
-      next()
-    } else {
-      next('/403')
-    }
-  } else {
-    next()
+    return
   }
+
+  if (to.path === '/login' && token) {
+    next('/dashboard')
+    return
+  }
+
+  if (to.meta.requiresAuth !== false && token) {
+    if (!userStore.userInfo) {
+      try {
+        const info = await userStore.fetchUserInfo()
+        if (!info) {
+          userStore.logout()
+          next('/login')
+          return
+        }
+      } catch {
+        userStore.logout()
+        next('/login')
+        return
+      }
+    }
+
+    if (to.meta.adminOnly && !userStore.hasRole('admin')) {
+      next('/403')
+      return
+    }
+  }
+
+  next()
 })
 
 router.afterEach((to) => {

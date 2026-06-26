@@ -90,6 +90,7 @@ func Module() fx.Option {
 			repository.NewRoleRepository,
 			repository.NewPermissionRepository,
 			repository.NewAuditRepository,
+			repository.NewResourceRepository,
 
 			// Service 层
 			service.NewAuthService,
@@ -98,6 +99,7 @@ func Module() fx.Option {
 			service.NewPermissionService,
 			service.NewDashboardService,
 			service.NewAuditService,
+			service.NewResourceService,
 
 			// Handler 层
 			handler.NewAuthHandler,
@@ -106,6 +108,7 @@ func Module() fx.Option {
 			handler.NewPermissionHandler,
 			handler.NewDashboardHandler,
 			handler.NewAuditHandler,
+			handler.NewResourceHandler,
 			handler.NewWsHandler,
 
 			// Router 层
@@ -204,6 +207,7 @@ func provideHandlers(
 	perm *handler.PermissionHandler,
 	dash *handler.DashboardHandler,
 	audit *handler.AuditHandler,
+	resource *handler.ResourceHandler,
 	wsHandler *handler.WsHandler,
 ) *router.Handlers {
 	return &router.Handlers{
@@ -213,6 +217,7 @@ func provideHandlers(
 		Permission: perm,
 		Dashboard:  dash,
 		Audit:      audit,
+		Resource:   resource,
 		WS:         wsHandler,
 	}
 }
@@ -236,11 +241,15 @@ func provideEngine(cfg *config.Config, lc fx.Lifecycle, mqClient *mq.Client, wsH
 	return engine
 }
 
-// autoMigrate 自动迁移新增的数据表（审核申请、系统消息）。
-func autoMigrate(auditRepo *repository.AuditRepository) {
+// autoMigrate 自动迁移新增的数据表（审核申请、系统消息、资源清单）。
+func autoMigrate(auditRepo *repository.AuditRepository, resourceRepo *repository.ResourceRepository) {
 	if err := auditRepo.AutoMigrate(); err != nil {
-		slog.Error("auto migrate failed", "error", err)
-		panic(fmt.Errorf("auto migrate failed: %w", err))
+		slog.Error("audit table migrate failed", "error", err)
+		panic(fmt.Errorf("audit table migrate failed: %w", err))
+	}
+	if err := resourceRepo.AutoMigrate(); err != nil {
+		slog.Error("resource table migrate failed", "error", err)
+		panic(fmt.Errorf("resource table migrate failed: %w", err))
 	}
 	slog.Info("database migration completed")
 }

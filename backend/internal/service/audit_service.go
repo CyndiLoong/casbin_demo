@@ -562,8 +562,8 @@ func (s *AuditService) ListMyApplications(userID uint, page, pageSize int, statu
 	return result, total, nil
 }
 
-func (s *AuditService) ListAllApplications(page, pageSize int, status *int, applicant string) ([]model.AuditApplicationResponse, int64, error) {
-	apps, total, err := s.auditRepo.ListAll(page, pageSize, status, applicant)
+func (s *AuditService) ListAllApplications(page, pageSize int, status *int, excludePending bool, applicant string) ([]model.AuditApplicationResponse, int64, error) {
+	apps, total, err := s.auditRepo.ListAll(page, pageSize, status, excludePending, applicant)
 	if err != nil {
 		return nil, 0, errors.New("查询申请列表失败")
 	}

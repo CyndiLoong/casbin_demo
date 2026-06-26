@@ -93,13 +93,15 @@ func (r *AuditRepository) ListByApplicant(applicantID uint, page, pageSize int, 
 	return apps, total, nil
 }
 
-func (r *AuditRepository) ListAll(page, pageSize int, status *int, applicant string) ([]model.AuditApplication, int64, error) {
+func (r *AuditRepository) ListAll(page, pageSize int, status *int, excludePending bool, applicant string) ([]model.AuditApplication, int64, error) {
 	var apps []model.AuditApplication
 	var total int64
 
 	query := r.db.Model(&model.AuditApplication{})
 	if status != nil {
 		query = query.Where("status = ?", *status)
+	} else if excludePending {
+		query = query.Where("status != ?", model.AuditStatusPending)
 	}
 	if applicant != "" {
 		query = query.Where("applicant_name LIKE ?", "%"+applicant+"%")
@@ -109,8 +111,14 @@ func (r *AuditRepository) ListAll(page, pageSize int, status *int, applicant str
 		return nil, 0, err
 	}
 
+	sortColumn := "created_at"
+	if status != nil && *status != model.AuditStatusPending {
+		sortColumn = "COALESCE(reviewed_at, created_at)"
+	} else if excludePending {
+		sortColumn = "COALESCE(reviewed_at, created_at)"
+	}
 	offset := (page - 1) * pageSize
-	if err := query.Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&apps).Error; err != nil {
+	if err := query.Order(sortColumn + " DESC").Offset(offset).Limit(pageSize).Find(&apps).Error; err != nil {
 		return nil, 0, err
 	}
 

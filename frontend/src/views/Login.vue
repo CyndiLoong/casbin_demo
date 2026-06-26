@@ -87,7 +87,7 @@
               <button class="demo-btn" @click="fillDemo('admin')">管理员 admin</button>
               <button class="demo-btn" @click="fillDemo('user')">普通用户 user</button>
             </div>
-            <p class="demo-pwd">密码均为：123456</p>
+            <p class="demo-pwd">密码：admin/admin123 &nbsp;|&nbsp; user/user123</p>
           </div>
         </div>
       </div>
@@ -137,7 +137,7 @@ const toggleMode = () => {
 
 const fillDemo = (role: string) => {
   form.username = role
-  form.password = '123456'
+  form.password = role === 'admin' ? 'admin123' : 'user123'
 }
 
 const handleSubmit = async () => {

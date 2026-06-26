@@ -35,7 +35,7 @@
 html, body, #app {
   height: 100%;
   width: 100%;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Noto Sans SC', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -223,25 +223,63 @@ body {
   background: var(--bg-glass-hover) !important;
 }
 
+.el-overlay {
+  z-index: 2500 !important;
+  background-color: rgba(0, 0, 0, 0.65) !important;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
 .el-dialog {
-  background: rgba(20, 20, 40, 0.95) !important;
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--border-glass);
+  background: rgba(18, 18, 38, 0.98) !important;
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 20px !important;
+  margin: 0 auto !important;
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  max-height: calc(100vh - 80px) !important;
+  overflow: hidden !important;
+  display: flex;
+  flex-direction: column;
 }
 
 .el-dialog__header {
+  padding: 20px 28px !important;
+  margin-right: 0 !important;
   border-bottom: 1px solid var(--border-glass);
-  padding-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.el-dialog__headerbtn {
+  top: 20px !important;
+  right: 20px !important;
+}
+
+.el-dialog__close {
+  color: var(--text-muted) !important;
+  font-size: 18px !important;
+}
+
+.el-dialog__close:hover {
+  color: var(--text-primary) !important;
 }
 
 .el-dialog__title {
   color: var(--text-primary) !important;
   font-weight: 600;
+  font-size: 18px !important;
 }
 
 .el-dialog__body {
-  padding-top: 24px !important;
+  padding: 24px 28px !important;
+  flex: 1 !important;
+  overflow-y: auto !important;
+  min-height: 0 !important;
+  max-height: calc(100vh - 80px - 70px) !important;
 }
 
 .el-form-item__label {
@@ -327,4 +365,58 @@ body {
   backdrop-filter: blur(20px) !important;
   border-radius: 12px !important;
   border: 1px solid var(--border-glass) !important;
+}
+
+/* ElNotification 弹窗毛玻璃样式 - 与暗色主题一致 */
+.el-notification {
+  background: rgba(15, 15, 35, 0.88) !important;
+  backdrop-filter: blur(24px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(150%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5) !important;
+  color: var(--text-primary) !important;
+  padding-right: 40px !important;
+}
+
+.el-notification__title {
+  color: var(--text-primary) !important;
+  font-weight: 600 !important;
+  font-size: 15px !important;
+}
+
+.el-notification__content {
+  color: var(--text-secondary) !important;
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+  margin-top: 6px !important;
+}
+
+.el-notification__closeBtn {
+  color: var(--text-muted) !important;
+  font-size: 16px !important;
+}
+
+.el-notification__closeBtn:hover {
+  color: var(--text-primary) !important;
+}
+
+.el-notification--info {
+  border-left: 4px solid var(--primary-500) !important;
+}
+
+.el-notification--success {
+  border-left: 4px solid var(--success) !important;
+}
+
+.el-notification--warning {
+  border-left: 4px solid var(--warning) !important;
+}
+
+.el-notification--error {
+  border-left: 4px solid var(--danger) !important;
+}
+
+.el-notification .el-icon {
+  margin-top: 2px !important;
 }

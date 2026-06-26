@@ -16,7 +16,8 @@
         <el-radio-button :value="undefined">全部</el-radio-button>
         <el-radio-button :value="0">待审核</el-radio-button>
         <el-radio-button :value="1">已通过</el-radio-button>
-        <el-radio-button :value="2">已拒绝</el-radio-button>
+        <el-radio-button :value="2">已驳回</el-radio-button>
+        <el-radio-button :value="3">已撤回</el-radio-button>
       </el-radio-group>
     </div>
 
@@ -52,7 +53,7 @@
           </div>
           <p class="app-purpose">{{ app.purpose }}</p>
           <div v-if="app.status !== 0 && app.review_comment" class="review-comment">
-            <span class="comment-label">{{ app.status === 1 ? '通过说明：' : '拒绝原因：' }}</span>
+            <span class="comment-label">{{ app.status === 1 ? '通过说明：' : (app.status === 2 ? '拒绝原因：' : '撤回原因：') }}</span>
             {{ app.review_comment }}
           </div>
           <div v-if="app.can_withdraw && app.withdraw_remain_ms && app.withdraw_remain_ms > 0" class="withdraw-countdown">
@@ -82,11 +83,15 @@
       />
     </div>
 
-    <el-dialog v-model="detailVisible" title="申请详情" width="560px" destroy-on-close>
+    <el-dialog v-model="detailVisible" title="申请详情" width="780px" destroy-on-close class="my-app-detail-dialog" align-center>
       <div v-if="currentApp" class="detail-content">
-        <div class="detail-header">
-          <h3 class="detail-title">{{ currentApp.resource_name }}</h3>
-          <el-tag :type="getStatusType(currentApp.status)" effect="dark">{{ currentApp.status_text }}</el-tag>
+        <div class="detail-status-bar" :class="getStatusBarClass(currentApp.status)">
+          <el-icon :size="20"><component :is="getStatusIcon(currentApp.status)" /></el-icon>
+          <div class="status-info">
+            <span class="status-label">当前状态</span>
+            <span class="status-value">{{ currentApp.status_text }}</span>
+          </div>
+          <el-tag :type="getStatusType(currentApp.status)" size="large" effect="dark">{{ currentApp.status_text }}</el-tag>
         </div>
 
         <div v-if="currentApp.can_withdraw && currentApp.withdraw_remain_ms && currentApp.withdraw_remain_ms > 0" class="withdraw-banner">
@@ -97,45 +102,74 @@
           </button>
         </div>
 
-        <div class="detail-grid">
-          <div class="detail-item">
-            <span class="detail-label">资源类型</span>
-            <span class="detail-value">{{ getTypeLabel(currentApp.resource_type) }}</span>
-          </div>
-          <div class="detail-item">
-            <span class="detail-label">API名称</span>
-            <span class="detail-value">{{ currentApp.api_name }}</span>
-          </div>
-          <div class="detail-item">
-            <span class="detail-label">预期QPS</span>
-            <span class="detail-value">{{ currentApp.expected_qps }}</span>
-          </div>
-          <div class="detail-item">
-            <span class="detail-label">申请时间</span>
-            <span class="detail-value">{{ formatTime(currentApp.created_at) }}</span>
-          </div>
-          <div v-if="currentApp.contact_info" class="detail-item">
-            <span class="detail-label">联系方式</span>
-            <span class="detail-value">{{ currentApp.contact_info }}</span>
+        <div class="detail-section">
+          <h4 class="section-heading">
+            <el-icon><Box /></el-icon>
+            资源信息
+          </h4>
+          <div class="detail-grid">
+            <div class="detail-item">
+              <span class="detail-label">资源名称</span>
+              <span class="detail-value highlight">{{ currentApp.resource_name }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">资源类型</span>
+              <el-tag size="small" effect="dark" :type="getTypeColor(currentApp.resource_type)">
+                {{ getTypeLabel(currentApp.resource_type) }}
+              </el-tag>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">API名称</span>
+              <code class="api-code">{{ currentApp.api_name }}</code>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">预期QPS</span>
+              <span class="detail-value">{{ currentApp.expected_qps }}</span>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">申请时间</span>
+              <span class="detail-value">{{ formatTime(currentApp.created_at) }}</span>
+            </div>
+            <div v-if="currentApp.contact_info" class="detail-item">
+              <span class="detail-label">联系方式</span>
+              <span class="detail-value">{{ currentApp.contact_info }}</span>
+            </div>
           </div>
         </div>
 
-        <div v-if="currentApp.api_description" class="detail-block">
-          <h4>API描述</h4>
-          <p>{{ currentApp.api_description }}</p>
-        </div>
-        <div class="detail-block">
-          <h4>使用目的</h4>
-          <p>{{ currentApp.purpose }}</p>
+        <div v-if="currentApp.api_description" class="detail-section">
+          <h4 class="section-heading">
+            <el-icon><Document /></el-icon>
+            API描述
+          </h4>
+          <p class="detail-text">{{ currentApp.api_description }}</p>
         </div>
 
-        <div v-if="currentApp.status !== 0" class="detail-block review-block" :class="{ approved: currentApp.status === 1, rejected: currentApp.status === 2 }">
-          <h4>审核结果</h4>
-          <div class="review-info">
-            <span v-if="currentApp.reviewer_name">审核人：{{ currentApp.reviewer_name }}</span>
-            <span v-if="currentApp.reviewed_at">{{ formatTime(currentApp.reviewed_at) }}</span>
+        <div class="detail-section">
+          <h4 class="section-heading">
+            <el-icon><EditPen /></el-icon>
+            使用目的
+          </h4>
+          <p class="detail-text purpose">{{ currentApp.purpose }}</p>
+        </div>
+
+        <div v-if="currentApp.status !== 0" class="detail-section">
+          <h4 class="section-heading">
+            <el-icon><Checked /></el-icon>
+            {{ currentApp.status === 3 ? '撤回信息' : '审核结果' }}
+          </h4>
+          <div class="review-result" :class="getReviewResultClass(currentApp.status)">
+            <div class="review-result-header">
+              <el-icon><component :is="getReviewIcon(currentApp.status)" /></el-icon>
+              <span>{{ getReviewTitle(currentApp.status) }}</span>
+            </div>
+            <div v-if="currentApp.status !== 3" class="review-info">
+              <span v-if="currentApp.reviewer_name">审核人：{{ currentApp.reviewer_name }}</span>
+              <span v-if="currentApp.reviewed_at">{{ formatTime(currentApp.reviewed_at) }}</span>
+              <span v-if="currentApp.status === 3 && currentApp.withdrawn_at">撤回时间：{{ formatTime(currentApp.withdrawn_at) }}</span>
+            </div>
+            <p v-if="currentApp.review_comment || currentApp.withdraw_reason">{{ currentApp.status === 3 ? (currentApp.withdraw_reason || '已主动撤回申请') : currentApp.review_comment }}</p>
           </div>
-          <p v-if="currentApp.review_comment">{{ currentApp.review_comment }}</p>
         </div>
       </div>
     </el-dialog>
@@ -144,7 +178,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, onBeforeUnmount } from 'vue'
-import { Plus, Document, Box, Link, Odometer, ArrowRight, Clock } from '@element-plus/icons-vue'
+import { Plus, Document, Box, Link, Odometer, ArrowRight, Clock, EditPen, Checked, CircleCheck, Close, Warning } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getMyApplications, withdrawAudit, type AuditApplication } from '@/api/audit'
 import { wsService } from '@/utils/websocket'
@@ -192,6 +226,7 @@ const getStatusType = (status: number) => {
     case 0: return 'warning'
     case 1: return 'success'
     case 2: return 'danger'
+    case 3: return 'info'
     default: return 'info'
   }
 }
@@ -202,6 +237,61 @@ const getTypeLabel = (t: string) => {
     asr: '语音识别', tts: '语音合成', embedding: '向量嵌入', other: '其他'
   }
   return map[t] || t
+}
+
+const getTypeColor = (t: string) => {
+  const map: Record<string, string> = {
+    llm_chat: 'primary', llm_code: 'success', image_gen: 'warning',
+    asr: 'info', tts: 'info', embedding: '', other: 'info'
+  }
+  return map[t] || 'info'
+}
+
+const getStatusBarClass = (status: number) => {
+  switch (status) {
+    case 0: return 'pending'
+    case 1: return 'approved'
+    case 2: return 'rejected'
+    case 3: return 'withdrawn'
+    default: return ''
+  }
+}
+
+const getStatusIcon = (status: number) => {
+  switch (status) {
+    case 0: return Clock
+    case 1: return CircleCheck
+    case 2: return Close
+    case 3: return Warning
+    default: return Document
+  }
+}
+
+const getReviewResultClass = (status: number) => {
+  switch (status) {
+    case 1: return 'approved'
+    case 2: return 'rejected'
+    case 3: return 'withdrawn'
+    default: return ''
+  }
+}
+
+const getReviewIcon = (status: number) => {
+  switch (status) {
+    case 1: return CircleCheck
+    case 2: return Close
+    case 3: return Warning
+    default: return Document
+  }
+}
+
+const getReviewTitle = (status: number) => {
+  switch (status) {
+    case 1: return '审核通过'
+    case 2: return '审核驳回'
+    case 3: return '已撤回'
+    default: return '审核结果'
+  }
 }
 
 const formatTime = (t: string) => {
@@ -456,73 +546,185 @@ onBeforeUnmount(() => {
   color: var(--text-primary);
 }
 
-.detail-header {
+.detail-status-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: 16px;
+  padding: 18px 22px;
+  border-radius: 14px;
+  margin-bottom: 24px;
 }
 
-.detail-title {
-  font-size: 18px;
+.detail-status-bar.pending {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(6, 182, 212, 0.08));
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  color: var(--primary-300);
+}
+
+.detail-status-bar.approved {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(52, 211, 153, 0.08));
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: var(--success);
+}
+
+.detail-status-bar.rejected {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(248, 113, 113, 0.08));
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: var(--danger);
+}
+
+.detail-status-bar.withdrawn {
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
+  color: var(--text-secondary);
+}
+
+.status-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.status-label {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.status-value {
+  font-size: 16px;
   font-weight: 600;
+}
+
+.detail-section {
+  margin-bottom: 24px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-glass);
 }
 
 .detail-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px 24px;
-  margin-bottom: 16px;
+  gap: 14px 24px;
 }
 
 .detail-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+}
+
+.detail-item.full-width {
+  grid-column: 1 / -1;
 }
 
 .detail-label {
   font-size: 12px;
   color: var(--text-muted);
+  font-weight: 500;
 }
 
 .detail-value {
   font-size: 14px;
-}
-
-.detail-block {
-  margin-bottom: 16px;
-}
-
-.detail-block h4 {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-}
-
-.detail-block p {
-  font-size: 14px;
   color: var(--text-primary);
-  line-height: 1.6;
+}
+
+.detail-value.highlight {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.api-code {
   background: var(--bg-glass);
-  padding: 12px 16px;
-  border-radius: 10px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  color: var(--accent-cyan);
+  display: inline-block;
+  word-break: break-all;
 }
 
-.review-block.approved p {
-  border-left: 3px solid var(--success);
+.detail-text {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  background: var(--bg-glass);
+  padding: 14px 18px;
+  border-radius: 12px;
+  border-left: 3px solid var(--primary-500);
+  margin: 0;
 }
 
-.review-block.rejected p {
-  border-left: 3px solid var(--danger);
+.detail-text.purpose {
+  border-left-color: var(--accent-cyan);
+}
+
+.review-result {
+  padding: 14px 18px;
+  border-radius: 12px;
+}
+
+.review-result.approved {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.review-result.rejected {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.review-result.withdrawn {
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
+}
+
+.review-result-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.review-result.approved .review-result-header {
+  color: var(--success);
+}
+
+.review-result.rejected .review-result-header {
+  color: var(--danger);
+}
+
+.review-result.withdrawn .review-result-header {
+  color: var(--text-secondary);
 }
 
 .review-info {
   display: flex;
   gap: 16px;
+  flex-wrap: wrap;
   font-size: 12px;
   color: var(--text-muted);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+}
+
+.review-result p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
 }
 
 .withdraw-countdown {

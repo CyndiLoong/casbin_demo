@@ -1,5 +1,5 @@
 <template>
-  <div class="notification-wrapper">
+  <div class="notification-wrapper" ref="wrapperRef">
     <el-badge :value="totalCount" :hidden="totalCount === 0" :max="99" class="notification-badge">
       <button class="bell-btn" @click="showPanel = !showPanel">
         <el-icon :size="20"><Bell /></el-icon>
@@ -86,8 +86,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { Bell, Warning, Loading, CircleCheck, Document, BellFilled, Check } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getMessages, getPendingCount, markAllRead, markMessageRead, getAllApplications, type SysMessage, type AuditApplication } from '@/api/audit'
@@ -95,6 +95,7 @@ import { wsService } from '@/utils/websocket'
 import { useUserStore } from '@/store/user'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 
 const showPanel = ref(false)
@@ -105,6 +106,7 @@ const pendingApps = ref<AuditApplication[]>([])
 const unreadCount = ref(0)
 const pendingCount = ref(0)
 const panelBody = ref<HTMLElement | null>(null)
+const wrapperRef = ref<HTMLElement | null>(null)
 
 const isAdmin = computed(() => {
   return userStore.userInfo?.roles?.includes('admin') ?? false
@@ -161,29 +163,38 @@ const handleMessageClick = async (msg: SysMessage) => {
       await markMessageRead(msg.id)
       msg.is_read = true
       unreadCount.value = Math.max(0, unreadCount.value - 1)
+      if (wsService['onUnreadCountChange']) {
+        wsService['onUnreadCountChange'](unreadCount.value)
+      }
     } catch (e) {
       console.error(e)
     }
   }
+  showPanel.value = false
   if (msg.business_type === 'audit_application') {
-    if (msg.type === 'new_application') {
+    if (isAdmin.value && (msg.type === 'new_application' || msg.type === 'application_withdrawn')) {
       router.push(`/audit`)
     } else {
       router.push(`/my-applications`)
     }
-    showPanel.value = false
+  } else {
+    router.push('/messages')
   }
 }
 
 const goToAudit = (id: number) => {
-  router.push(`/audit`)
   showPanel.value = false
+  router.push(`/audit`)
 }
 
 const goToMessages = () => {
-  router.push('/messages')
   showPanel.value = false
+  router.push('/messages')
 }
+
+watch(() => route.path, () => {
+  showPanel.value = false
+})
 
 const getMsgTypeClass = (type: string) => {
   if (type === 'new_application') return 'info'
@@ -209,8 +220,7 @@ const formatTime = (t: string) => {
 }
 
 const handleClickOutside = (e: MouseEvent) => {
-  const wrapper = document.querySelector('.notification-wrapper')
-  if (wrapper && !wrapper.contains(e.target as Node)) {
+  if (wrapperRef.value && !wrapperRef.value.contains(e.target as Node)) {
     showPanel.value = false
   }
 }
@@ -267,12 +277,24 @@ onUnmounted(() => {
   position: absolute;
   top: calc(100% + 12px);
   right: 0;
-  width: 380px;
-  max-height: 520px;
-  z-index: 1000;
+  width: 400px;
+  max-height: 540px;
+  z-index: 2000;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: rgba(15, 15, 35, 0.92) !important;
+  backdrop-filter: blur(32px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+  transform: none !important;
+}
+
+.notification-panel:hover {
+  transform: none !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
 }
 
 .dropdown-enter-active,
@@ -399,7 +421,13 @@ onUnmounted(() => {
 }
 
 .message-item.unread {
-  background: rgba(99, 102, 241, 0.05);
+  background: rgba(99, 102, 241, 0.1);
+  border-left: 3px solid var(--primary-500);
+}
+
+.message-item.unread .message-title {
+  color: #fff;
+  font-weight: 600;
 }
 
 .message-icon {
