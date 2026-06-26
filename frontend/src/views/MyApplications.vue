@@ -55,6 +55,13 @@
             <span class="comment-label">{{ app.status === 1 ? '通过说明：' : '拒绝原因：' }}</span>
             {{ app.review_comment }}
           </div>
+          <div v-if="app.can_withdraw && app.withdraw_remain_ms && app.withdraw_remain_ms > 0" class="withdraw-countdown">
+            <el-icon><Clock /></el-icon>
+            <span>可在 {{ formatCountdown(app.withdraw_remain_ms) }} 内撤回</span>
+            <button class="btn-withdraw-inline" @click.stop="handleWithdraw(app)" :disabled="withdrawing">
+              撤回申请
+            </button>
+          </div>
         </div>
         <div class="app-card-arrow">
           <el-icon><ArrowRight /></el-icon>
@@ -80,6 +87,14 @@
         <div class="detail-header">
           <h3 class="detail-title">{{ currentApp.resource_name }}</h3>
           <el-tag :type="getStatusType(currentApp.status)" effect="dark">{{ currentApp.status_text }}</el-tag>
+        </div>
+
+        <div v-if="currentApp.can_withdraw && currentApp.withdraw_remain_ms && currentApp.withdraw_remain_ms > 0" class="withdraw-banner">
+          <el-icon><Clock /></el-icon>
+          <span>可在 <strong>{{ formatCountdown(currentApp.withdraw_remain_ms) }}</strong> 内撤回申请</span>
+          <button class="btn-withdraw" @click="handleWithdraw(currentApp)" :disabled="withdrawing">
+            撤回申请
+          </button>
         </div>
 
         <div class="detail-grid">
@@ -128,12 +143,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
-import { Plus, Document, Box, Link, Odometer, ArrowRight } from '@element-plus/icons-vue'
-import { getMyApplications, type AuditApplication } from '@/api/audit'
+import { ref, onMounted, onUnmounted, onBeforeUnmount } from 'vue'
+import { Plus, Document, Box, Link, Odometer, ArrowRight, Clock } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { getMyApplications, withdrawAudit, type AuditApplication } from '@/api/audit'
 import { wsService } from '@/utils/websocket'
 
 const loading = ref(false)
+const withdrawing = ref(false)
 const applications = ref<AuditApplication[]>([])
 const page = ref(1)
 const pageSize = ref(10)
@@ -141,6 +158,7 @@ const total = ref(0)
 const filterStatus = ref<number | undefined>(undefined)
 const detailVisible = ref(false)
 const currentApp = ref<AuditApplication | null>(null)
+const countdownTimers = ref<Map<number, number>>(new Map())
 
 const loadData = async () => {
   loading.value = true
@@ -191,17 +209,85 @@ const formatTime = (t: string) => {
   return `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`
 }
 
+const handleWithdraw = async (app: AuditApplication) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要撤回「${app.resource_name}」的API申请吗？撤回后需重新提交。`,
+      '撤回申请',
+      {
+        confirmButtonText: '确认撤回',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+  } catch {
+    return
+  }
+
+  withdrawing.value = true
+  try {
+    await withdrawAudit(app.id)
+    ElMessage.success('申请已撤回')
+    loadData()
+    if (currentApp.value?.id === app.id) {
+      detailVisible.value = false
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '撤回失败')
+  } finally {
+    withdrawing.value = false
+  }
+}
+
+const formatCountdown = (ms: number) => {
+  if (ms <= 0) return '00:00'
+  const totalSeconds = Math.floor(ms / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+}
+
 const handleReviewWS = () => {
   loadData()
 }
 
+const handleWithdrawWS = () => {
+  loadData()
+}
+
+let countdownInterval: number | null = null
+
+const startCountdown = () => {
+  if (countdownInterval) return
+  countdownInterval = window.setInterval(() => {
+    applications.value.forEach(app => {
+      if (app.can_withdraw && app.withdraw_remain_ms && app.withdraw_remain_ms > 0) {
+        app.withdraw_remain_ms = Math.max(0, app.withdraw_remain_ms - 1000)
+      }
+    })
+  }, 1000)
+}
+
+const stopCountdown = () => {
+  if (countdownInterval) {
+    clearInterval(countdownInterval)
+    countdownInterval = null
+  }
+}
+
 onMounted(() => {
   loadData()
+  startCountdown()
   wsService.on('review_result', handleReviewWS)
+  wsService.on('application_withdrawn', handleWithdrawWS)
+  wsService.on('withdraw_confirmed', handleWithdrawWS)
 })
 
-onUnmounted(() => {
+onBeforeUnmount(() => {
+  stopCountdown()
   wsService.off('review_result', handleReviewWS)
+  wsService.off('application_withdrawn', handleWithdrawWS)
+  wsService.off('withdraw_confirmed', handleWithdrawWS)
 })
 </script>
 
@@ -437,6 +523,83 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--text-muted);
   margin-bottom: 6px;
+}
+
+.withdraw-countdown {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--warning);
+}
+
+.btn-withdraw-inline {
+  margin-left: auto;
+  padding: 4px 12px;
+  background: rgba(245, 158, 11, 0.2);
+  border: none;
+  border-radius: 6px;
+  color: var(--warning);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-withdraw-inline:hover {
+  background: rgba(245, 158, 11, 0.3);
+}
+
+.btn-withdraw-inline:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.withdraw-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(249, 115, 22, 0.1));
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 12px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  color: var(--warning);
+}
+
+.withdraw-banner strong {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.btn-withdraw {
+  margin-left: auto;
+  padding: 8px 20px;
+  background: linear-gradient(135deg, var(--warning), #f97316);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-withdraw:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+}
+
+.btn-withdraw:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 :deep(.el-radio-group) {
